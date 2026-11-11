@@ -217,3 +217,105 @@ SELECT LEFT(invoice_stamp_id, 3) AS prefix, COUNT(*) AS n,
 FROM dbo.invoices GROUP BY LEFT(invoice_stamp_id, 3);
 GO
 
+/* =====================================================================
+   3. INVOICE AMOUNTS / CURRENCY / SHIPPING
+   ===================================================================== */
+
+/* 3.1 Currency domain (EUR standardisation) */
+SELECT currency, COUNT(*) AS n FROM dbo.invoices GROUP BY currency;
+GO
+
+/* 3.2 Header arithmetic: total_for_vat = products_total + shipping;
+       final_total = total_for_vat + vat_value; header vs sum of lines */
+WITH l AS (
+    SELECT invoice_stamp_id, SUM(line_total) AS sum_lines, SUM(line_vat) AS sum_vat, COUNT(*) AS n_lines
+    FROM dbo.invoices_lines GROUP BY invoice_stamp_id
+)
+SELECT i.invoice_stamp_id, i.products_total, l.sum_lines, i.shipping_cost, i.total_for_vat,
+       i.vat_value, l.sum_vat, i.final_total, l.n_lines,
+       CASE WHEN l.invoice_stamp_id IS NULL                              THEN 'NO_LINES; ' ELSE '' END +
+       CASE WHEN i.products_total <> l.sum_lines                         THEN 'PRODUCTS_TOTAL<>SUM(LINES); ' ELSE '' END +
+       CASE WHEN i.total_for_vat <> i.products_total + i.shipping_cost   THEN 'TOTAL_FOR_VAT_MISMATCH; ' ELSE '' END +
+       CASE WHEN i.vat_value <> l.sum_vat                                THEN 'VAT<>SUM(LINE_VAT); ' ELSE '' END +
+       CASE WHEN i.final_total <> i.total_for_vat + i.vat_value          THEN 'FINAL_TOTAL_MISMATCH; ' ELSE '' END AS issues
+FROM dbo.invoices i
+LEFT JOIN l ON l.invoice_stamp_id = i.invoice_stamp_id
+WHERE l.invoice_stamp_id IS NULL
+   OR i.products_total <> l.sum_lines
+   OR i.total_for_vat <> i.products_total + i.shipping_cost
+   OR i.vat_value <> l.sum_vat
+   OR i.final_total <> i.total_for_vat + i.vat_value;
+GO
+
+/* 3.3 Shipping cost as % of products_total (policy appears to be 2.5%) */
+SELECT CAST(shipping_cost / NULLIF(products_total,0) AS decimal(9,6)) AS shipping_ratio, COUNT(*) AS n
+FROM dbo.invoices
+GROUP BY CAST(shipping_cost / NULLIF(products_total,0) AS decimal(9,6))
+ORDER BY n DESC;
+GO
+
+/* =====================================================================
+   4. INVOICE LINES
+   ===================================================================== */
+
+/* 4.1 Sign errors and arithmetic: line_total = quantity * unit_price */
+SELECT invoice_line_stamp_id, invoice_stamp_id, product, quantity, unit_price, line_total, line_vat,
+       quantity * unit_price AS qty_x_price,
+       CASE WHEN quantity   <= 0 THEN 'NON_POSITIVE_QTY; '   ELSE '' END +
+       CASE WHEN unit_price <= 0 THEN 'NON_POSITIVE_PRICE; ' ELSE '' END +
+       CASE WHEN ABS(quantity * unit_price) <> line_total THEN 'LINE_TOTAL_MISMATCH; ' ELSE '' END +
+       CASE WHEN line_vat IS NULL THEN 'NULL_VAT; ' ELSE '' END AS issues
+FROM dbo.invoices_lines
+WHERE quantity <= 0 OR unit_price <= 0 OR ABS(quantity * unit_price) <> line_total OR line_vat IS NULL;
+GO
+
+/* 4.2 Implied VAT rate per line vs product vat_rate */
+SELECT CAST(l.line_vat / NULLIF(l.line_total,0) * 100 AS decimal(6,2)) AS implied_vat_pct,
+       p.vat_rate, COUNT(*) AS n
+FROM dbo.invoices_lines l LEFT JOIN dbo.products p ON p.reference = l.product
+GROUP BY CAST(l.line_vat / NULLIF(l.line_total,0) * 100 AS decimal(6,2)), p.vat_rate;
+GO
+
+/* 4.3 Unit price on the line vs product current_sell_price (scale check) */
+SELECT TOP (20) l.product, l.unit_price, p.current_sell_price,
+       p.current_sell_price / NULLIF(ABS(l.unit_price),0) AS ratio
+FROM dbo.invoices_lines l JOIN dbo.products p ON p.reference = l.product
+ORDER BY ratio;
+GO
+
+/* =====================================================================
+   5. PRODUCTS / REFERENTIAL INTEGRITY
+   ===================================================================== */
+
+/* 5.1 Products with missing mandatory descriptive attributes */
+SELECT reference, designation, family, category, supplyer, vat_rate, current_sell_price
+FROM dbo.products
+WHERE designation IS NULL OR family IS NULL OR category IS NULL OR supplyer IS NULL
+   OR vat_rate IS NULL OR current_sell_price IS NULL;
+GO
+
+/* 5.2 Price magnitude (current_sell_price appears stored x 1,000,000) */
+SELECT MIN(current_sell_price) AS min_price, MAX(current_sell_price) AS max_price,
+       AVG(current_sell_price) AS avg_price FROM dbo.products;
+GO
+
+/* 5.3 Are the "ghost" products (no attributes) ever sold? */
+SELECT p.reference, COUNT(l.invoice_line_stamp_id) AS times_sold
+FROM dbo.products p LEFT JOIN dbo.invoices_lines l ON l.product = p.reference
+WHERE p.designation IS NULL GROUP BY p.reference;
+GO
+
+/* 5.4 Suppliers: duplicated tax numbers / placeholders (DimSupplier) */
+SELECT taxpayer_number, COUNT(*) AS n, STRING_AGG(CAST(number AS varchar(10)) + ':' + name, ' | ') AS suppliers
+FROM dbo.suplliers GROUP BY taxpayer_number HAVING COUNT(*) > 1;
+SELECT number, name, taxpayer_number, zone, type FROM dbo.suplliers WHERE zone IS NULL OR LTRIM(RTRIM(city)) = '';
+GO
+
+/* 5.5 Customers / employees referenced by invoices */
+SELECT i.customer, c.name, c.type, COUNT(*) AS n_invoices
+FROM dbo.invoices i JOIN dbo.customers c ON c.number = i.customer
+GROUP BY i.customer, c.name, c.type ORDER BY i.customer;
+SELECT i.employee, e.name, e.[group], COUNT(*) AS n_invoices
+FROM dbo.invoices i JOIN dbo.employees e ON e.number = i.employee
+GROUP BY i.employee, e.name, e.[group];
+GO
