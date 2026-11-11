@@ -67,3 +67,37 @@ CREATE TABLE dbo.etl_LoadControl (
 INSERT INTO dbo.etl_LoadControl (SourceTable)
 VALUES ('customers'),('invoices'),('invoices_lines'),('products'),('suplliers'),('employees');
 GO
+
+/* =====================================================================
+   LOOKUP TABLES AND CURRENCY RATES
+   ===================================================================== */
+
+/* Currency_Lookup: free-text currency of the source -> ISO 4217 code */
+CREATE TABLE dbo.Currency_Lookup (
+    SourceCurrency   NVARCHAR(11)   NOT NULL CONSTRAINT PK_Currency_Lookup PRIMARY KEY,  -- invoices.currency
+    CurrencyCode     NCHAR(3)       NOT NULL
+);
+INSERT INTO dbo.Currency_Lookup (SourceCurrency, CurrencyCode)
+VALUES (N'EURO', N'EUR'), (N'EUR', N'EUR'), (N'LIBRA', N'GBP'), (N'GBP', N'GBP');   -- future UK branch
+GO
+
+/* stg_CurrencyRate: daily exchange rates (e.g. ECB reference rates file),
+   source for FactCurrencyRate; RateToEUR = EUR for 1 unit of currency    */
+CREATE TABLE dbo.stg_CurrencyRate (
+    CurrencyCode     NCHAR(3)       NOT NULL,
+    RateDate         DATE           NOT NULL,
+    RateToEUR        DECIMAL(18,6)  NOT NULL CONSTRAINT CK_stg_CurrencyRate_Pos CHECK (RateToEUR > 0),
+    CONSTRAINT PK_stg_CurrencyRate PRIMARY KEY (CurrencyCode, RateDate)
+);
+GO
+
+/* CustomerDuplicate_Lookup: result of the customer de-duplication -
+   every source customer id -> surviving id                               */
+CREATE TABLE dbo.CustomerDuplicate_Lookup (
+    SourceCustomerID    NUMERIC(10,0) NOT NULL CONSTRAINT PK_CustomerDuplicate_Lookup PRIMARY KEY,
+    SurvivorCustomerID  NUMERIC(10,0) NOT NULL,
+    MatchRule           NVARCHAR(30)  NOT NULL,   -- SELF | SAME_NIF | FUZZY_NAME_ZIP
+    MatchScore          DECIMAL(5,4)  NULL,       -- similarity from SSIS Fuzzy Grouping
+    RunID               INT           NULL
+);
+GO
