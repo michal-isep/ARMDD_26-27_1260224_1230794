@@ -112,3 +112,224 @@ Power BI analyses. The Staging Area and the Data Mart are on the **same server**
 5. **Load Business Dimensions**: Slowly Changing Dimension component (Type 1 / Type 2 per attribute).
 6. **Load Fact Tables**: `FactCurrencyRate`, then `FactSales` with surrogate-key lookups. New lines are
    inserted and changed lines updated (matched on `InvoiceLineID`). The watermarks only move forward if the run succeeds.
+---
+
+## 5. Staging Area Structures
+
+Created by `02_Create_Staging_Tables.sql` in database `MoreRhythm_StagingArea`.
+
+| Table | Kind | Content |
+|---|---|---|
+| `stg_Customers` | transient | cleaned customers (+ `SurvivorCustomerID`, normalised name, NIF validity) |
+| `stg_Invoices` | transient | invoice headers, ISO currency, rate, corrected shipping, `SumLinesTotal` |
+| `stg_InvoiceLines` | transient | **fact grain**: line measures, allocated shipping, all EUR measures |
+| `stg_Products`, `stg_Suppliers`, `stg_Employees` | transient | dimension sources, already joined with family/category/zone/manager |
+| `stg_CustomersDQP`, `stg_InvoicesDQP`, `stg_InvoiceLinesDQP`, `stg_ProductsDQP` | persistent | Data Quality Problem tables (course convention, lab 4 `CardDQP`): rejected rows (raw values as NVARCHAR) + `DQP` (problem code and description), `DQPDate`, `RunID` |
+| `CustomerDuplicate_Lookup` | persistent | source customer id → surviving id (de-duplication result) |
+| `Currency_Lookup` | persistent | source currency text → ISO code (`EURO` → `EUR`) |
+| `stg_CurrencyRate` | transient | daily exchange rates, source of `FactCurrencyRate` |
+| `etl_LoadControl` | persistent | incremental watermark (`LastUpdatedAt`) per source table |
+| `etl_RunLog` | persistent | one row per ETL execution |
+
+Every staging/error row carries `CreatedAt` / `UpdatedAt` (source `*_date + *_time`
+combined into `DATETIME2`) and `RunID` for lineage.
+
+
+### 5.1 Table structures
+
+The staging tables keep the source business keys (`CustomerID`, `InvoiceID`, `InvoiceLineID`, `ProductID`, …)
+so that the ETL can look up surrogate keys and match changed rows. `CreatedAt` / `UpdatedAt` drive the
+incremental load, and `RunID` links each row to its row in `etl_RunLog`.
+
+**stg_Customers**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| CustomerID | numeric(10,0) | no | PK |
+| SurvivorCustomerID | numeric(10,0) | yes |  |
+| CustomerName | nvarchar(55) | no |  |
+| CustomerNameNorm | nvarchar(55) | yes |  |
+| TaxNumber | varchar(20) | yes |  |
+| IsTaxNumberValid | bit | yes |  |
+| Phone | varchar(20) | yes |  |
+| Mobile | varchar(20) | yes |  |
+| ContactName | nvarchar(30) | yes |  |
+| Email | varchar(45) | yes |  |
+| Address | nvarchar(55) | yes |  |
+| City | nvarchar(43) | yes |  |
+| ZipCode | varchar(10) | yes |  |
+| ZipLocality | nvarchar(40) | yes |  |
+| Country | nvarchar(30) | yes |  |
+| ZoneCode | numeric(5,0) | yes |  |
+| ZoneName | nvarchar(50) | yes |  |
+| CustomerType | nvarchar(20) | no |  |
+| Segment | nvarchar(25) | no |  |
+| SellerCode | numeric(4,0) | yes |  |
+| DaysToPay | numeric(3,0) | yes |  |
+| BBAN | varchar(28) | yes |  |
+| CreatedAt | datetime2(0) | no |  |
+| UpdatedAt | datetime2(0) | no |  |
+| RunID | int | yes |  |
+
+**stg_Invoices**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| InvoiceID | varchar(25) | no | PK |
+| InvoiceDate | date | no |  |
+| CustomerID | numeric(10,0) | no |  |
+| SurvivorCustomerID | numeric(10,0) | yes |  |
+| EmployeeID | numeric(6,0) | no |  |
+| PaymentDate | date | yes |  |
+| CurrencySource | varchar(11) | no |  |
+| CurrencyCode | char(3) | no |  |
+| ExchangeRateToEUR | decimal(19,10) | no |  |
+| ProductsTotal | decimal(19,6) | no |  |
+| ShippingCost | decimal(19,6) | no |  |
+| TotalForVAT | decimal(19,6) | no |  |
+| VATValue | decimal(19,6) | no |  |
+| FinalTotal | decimal(19,6) | no |  |
+| SumLinesTotal | decimal(19,6) | yes |  |
+| ShippingCostEUR | decimal(19,6) | yes |  |
+| QualityFlags | varchar(200) | yes |  |
+| CreatedAt | datetime2(0) | no |  |
+| UpdatedAt | datetime2(0) | no |  |
+| RunID | int | yes |  |
+
+**stg_InvoiceLines**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| InvoiceLineID | varchar(25) | no | PK |
+| InvoiceID | varchar(25) | no |  |
+| ProductID | varchar(18) | no |  |
+| Quantity | decimal(14,4) | no |  |
+| UnitPrice | decimal(19,6) | no |  |
+| LineTotal | decimal(19,6) | no |  |
+| LineVAT | decimal(19,6) | no |  |
+| VATRate | decimal(5,2) | yes |  |
+| ShippingAllocated | decimal(19,6) | yes |  |
+| UnitPriceEUR | decimal(19,6) | yes |  |
+| LineTotalEUR | decimal(19,6) | yes |  |
+| LineVATEUR | decimal(19,6) | yes |  |
+| LineTotalWithVATEUR | decimal(19,6) | yes |  |
+| ShippingAllocatedEUR | decimal(19,6) | yes |  |
+| QualityFlags | varchar(200) | yes |  |
+| CreatedAt | datetime2(0) | no |  |
+| UpdatedAt | datetime2(0) | no |  |
+| RunID | int | yes |  |
+
+**stg_Products**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| ProductID | varchar(18) | no | PK |
+| ProductName | nvarchar(60) | no |  |
+| FamilyCode | varchar(18) | yes |  |
+| FamilyName | nvarchar(60) | yes |  |
+| FamilyClassification | nvarchar(20) | yes |  |
+| CategoryCode | int | yes |  |
+| CategoryName | nvarchar(35) | yes |  |
+| SupplierID | numeric(10,0) | yes |  |
+| Classification | nvarchar(20) | yes |  |
+| CurrentSellPrice | decimal(19,6) | yes |  |
+| LastCostPrice | decimal(19,6) | yes |  |
+| VATRate | decimal(5,2) | yes |  |
+| CreatedAt | datetime2(0) | yes |  |
+| UpdatedAt | datetime2(0) | yes |  |
+| RunID | int | yes |  |
+
+**stg_Suppliers**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| SupplierID | numeric(10,0) | no | PK |
+| SupplierName | nvarchar(55) | no |  |
+| TaxNumber | varchar(20) | yes |  |
+| City | nvarchar(43) | yes |  |
+| ZipCode | varchar(10) | yes |  |
+| Country | nvarchar(30) | yes |  |
+| ZoneCode | numeric(5,0) | yes |  |
+| ZoneName | nvarchar(50) | yes |  |
+| SupplierType | nvarchar(20) | yes |  |
+| Nationality | nvarchar(20) | yes |  |
+| CreatedAt | datetime2(0) | yes |  |
+| UpdatedAt | datetime2(0) | yes |  |
+| RunID | int | yes |  |
+
+**stg_Employees**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| EmployeeID | numeric(6,0) | no | PK |
+| EmployeeCode | varchar(20) | no |  |
+| EmployeeName | nvarchar(30) | no |  |
+| EmployeeGroup | nvarchar(20) | yes |  |
+| Department | nvarchar(20) | yes |  |
+| ManagerID | numeric(6,0) | yes |  |
+| ManagerName | nvarchar(30) | yes |  |
+| Email | varchar(100) | yes |  |
+| CreatedAt | datetime2(0) | yes |  |
+| UpdatedAt | datetime2(0) | yes |  |
+| RunID | int | yes |  |
+
+**stg_CurrencyRate**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| CurrencyCode | nchar(3) | no | PK |
+| RateDate | date | no | PK |
+| RateToEUR | decimal(18,6) | no |  |
+
+**Currency_Lookup**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| SourceCurrency | nvarchar(11) | no | PK |
+| CurrencyCode | nchar(3) | no |  |
+
+**CustomerDuplicate_Lookup**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| SourceCustomerID | numeric(10,0) | no | PK |
+| SurvivorCustomerID | numeric(10,0) | no |  |
+| MatchRule | nvarchar(30) | no |  |
+| MatchScore | decimal(5,4) | yes |  |
+| RunID | int | yes |  |
+
+**etl_LoadControl**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| SourceTable | varchar(50) | no | PK |
+| LastUpdatedAt | datetime2(0) | no |  |
+| LastRunID | int | yes |  |
+| LastRunTime | datetime2(0) | yes |  |
+
+**etl_RunLog**
+
+| Column | Type | Null | Key |
+|---|---|---|---|
+| RunID | int | no | PK |
+| PackageName | nvarchar(128) | no |  |
+| StartTime | datetime2(0) | no |  |
+| EndTime | datetime2(0) | yes |  |
+| Status | varchar(10) | no |  |
+| RowsExtracted | int | yes |  |
+| RowsRejected | int | yes |  |
+| RowsLoaded | int | yes |  |
+
+
+**DQP tables** (`stg_CustomersDQP`, `stg_InvoicesDQP`, `stg_InvoiceLinesDQP`, `stg_ProductsDQP`) follow the
+lab convention (`CardDQP`). Each has the same columns as the source table, stored as `NVARCHAR` so that values
+with the wrong type or length can still be kept, plus:
+
+| Column | Type | Null | Description |
+|---|---|---|---|
+| DQPID | int identity | no | primary key |
+| DQP | nvarchar(200) | no | problem code and description, e.g. `C01: customer name is missing` |
+| DQPDate | datetime | no | when the record was rejected (default `GETDATE()`) |
+| RunID | int | yes | ETL execution that rejected it |
+
+These tables are never truncated. Correcting the records and loading them later is out of the scope of this work, as the brief states.
