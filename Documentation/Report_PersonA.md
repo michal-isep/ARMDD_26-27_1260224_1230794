@@ -645,7 +645,7 @@ Notes
   680/2058 × 51.45 = 17.00; 56/2058 × 51.45 = 1.40; 1322/2058 × 51.45 = 33.05; total 51.45.
 * Validation on the full sample (37 invoices, 93 lines): Σ allocated = 990.395 = Σ invoice shipping, and the line shares of every invoice add up exactly to its shipping cost (0 mismatches).
 
-SQL implementation (used in `Pkg_02_Transform`):
+SQL implementation (Transform & Cleanse step of the `Data Mart ETL Package`, Execute SQL Task on the Staging Area):
 
 ```sql
 WITH l AS (
