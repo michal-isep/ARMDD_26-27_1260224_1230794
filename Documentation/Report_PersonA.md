@@ -163,6 +163,52 @@ are equal. The mechanism is in place for the expansion to the UK.
 
 ---
 
+## 4. SSIS Project Parameterisation Strategy (`Project.params`)
+
+Requirement: **no absolute paths or server/database names inside components**.
+The first four parameters are the ones defined in lab exercise 2 (same names).
+The two `Source…` parameters are added because the project brief also requires
+the operational database server and name to be configurable.
+
+| Parameter | Type | Default (dev) | Used by |
+|---|---|---|---|
+| `ServerName` | String | `localhost` | Staging Area & Data Mart connections (same server) |
+| `StagingAreaDBName` | String | `MoreRhythm_StagingArea` | `CM_StagingArea`; "Create Staging Area Database" task (`@DBName`) |
+| `DataMartDBName` | String | `MoreRhythm_DataMart` | `CM_DataMart`; "Create Data Mart Database" task (`@DBName`) |
+| `PackagePath` | String | project folder (where the solution is) | Foreach loops over `SQL Scripts\Staging Area`, `SQL Scripts\Data Mart`, CSV files in `Files` |
+| `SourceServerName` | String | `localhost` | `CM_MoreRhythm` connection |
+| `SourceDBName` | String | `MoreRhythm` | `CM_MoreRhythm` connection |
+
+**How it is applied** (following lab tutorials 1 and 2)
+
+* **Creating the databases**: an Execute SQL Task on an **ADO.NET** connection to
+  `master` runs a dynamic `IF DB_ID(@DBName) IS NULL EXEC('CREATE DATABASE ' + @DBName)`,
+  with `@DBName` mapped to `$Project::StagingAreaDBName` (or `DataMartDBName`).
+* **Creating the tables**: a Foreach File Enumerator iterates
+  `@[$Project::PackagePath] + "SQL Scripts\\Staging Area"` (`*.sql`), and an
+  Execute SQL Task runs each script (`CreateStageTable<Name>.sql`; Data Mart:
+  `CreateDim<Name>.sql`, `CreateFact<Name>.sql`). Every script checks that its
+  table does not already exist first.
+* **Temporal dimensions** are loaded once, only if empty, from
+  `@[$Project::PackagePath] + "Files\\DimDate.csv"` (generated with an Analysis
+  Services project, lab 3) and `"Files\\DimTime.csv"` (generated in Excel, lab 2).
+* The **project-level OLE DB connection managers** have their
+  `ConnectionString` set by a property **expression**, e.g.
+
+  ```
+  "Data Source=" + @[$Project::ServerName] + ";Initial Catalog=" + @[$Project::StagingAreaDBName]
+  + ";Provider=MSOLEDBSQL.1;Integrated Security=SSPI;Auto Translate=False;"
+  ```
+* No component contains a literal path. Every file or folder is built as `@[$Project::PackagePath]` plus a
+  path relative to the project (`SQL Scripts\…`, `Files\…`).
+* All the ETL is in one package (`Data Mart ETL Package`) organised in sequence containers, as in the labs,
+  so no package calls another package by path.
+* On another machine (the other team member's or the teacher's), only the values in `Project.params` change.
+  After deploying to the SSIS catalog (SSISDB), the parameters can be mapped to an **SSIS Environment**
+  (DEV/TEST/PROD) without touching the package, as in the "Deploying Packages" tutorial.
+
+---
+
 ## 5. Staging Area Structures
 
 Created by `02_Create_Staging_Tables.sql` in database `MoreRhythm_StagingArea`.
