@@ -1,0 +1,206 @@
+﻿Changed database context to 'MoreRhythm'.
+table_name|row_count
+----------|---------
+dbo.categories|11
+dbo.customers|26
+dbo.employees|6
+dbo.families|17
+dbo.invoices|37
+dbo.invoices_lines|93
+dbo.products|67
+dbo.purchases|18
+dbo.purchases_lines|77
+dbo.stocks_movements|686
+dbo.suplliers|14
+dbo.zones|5
+total_rows|null_tax|blank_tax|nine_digit_numeric|distinct_tax|min_len|max_len
+----------|--------|---------|------------------|------------|-------|-------
+26|0|1|23|25|0|9
+number|name|taxpayer_number|type|segment
+------|----|---------------|----|-------
+2|Vendas a Dinheiro|000000000|Cliente Final|Baixo
+20|MaisRitmo (interno)| |Interno|Baixo
+24|MaisRitmo - Filial Lisboa (interno)|0|Interno|Baixo
+25|MaisRitmo - Filial Porto (interno)|00|Interno|Baixo
+taxpayer_number|occurrences|customers
+---------------|-----------|---------
+502323434|2|10:Eira e Beira, lda | 18:Eira e Beira, lda
+number|name|nif|given_check|expected_check|nif_status
+------|----|---|-----------|--------------|----------
+1|Albertino Maciel|265236225|5|3|INVALID
+2|Vendas a Dinheiro|000000000|0|0|INVALID
+5|Coro Nossa Senhora Assunção|300455644|4|0|INVALID
+6|Loja de Instrumentos, lda|502341875|5|4|INVALID
+7|Sons e Ritmos|503897786|6|7|INVALID
+8|Luz e Som, lda|365564344|4|6|INVALID
+9|Dina Sofia de Almeida|502564345|5|2|INVALID
+11|La Musical Fashion|503215214|4|0|INVALID
+13|Fernando Martins|203450650|0|5|INVALID
+14|Gosto pela Música|203450342|2|5|INVALID
+16|Orquestra de Vila Real|345234123|3|0|INVALID
+17|Hora a Hora, lda|502342342|2|0|INVALID
+19|Valor do som, Lda.|502345786|6|0|INVALID
+21|La Cartuja Musical|211759852|2|6|INVALID
+22|Luz e Som Lda.|365564434|4|5|INVALID
+23|Supermercados Gota Doce, S.A.|500500500|0|9|INVALID
+26|Coro N. Senhora Assunção|300456544|4|9|INVALID
+3|Bernardo Santiago|125659822|2|2|VALID
+4|Rancho Folclórico da Beira Baixa|200345567|7|7|VALID
+10|Eira e Beira, lda|502323434|4|4|VALID
+12|Marisa Filipa Neves Lousa|217276342|2|2|VALID
+15|Ritmos Quentes, lda|214963675|5|5|VALID
+18|Eira e Beira, lda|502323434|4|4|VALID
+cust_a|name_a|nif_a|cust_b|name_b|nif_b|zip_code|same_phone|same_nif|name_difference_0_4
+------|------|-----|------|------|-----|--------|----------|--------|-------------------
+10|Eira e Beira, lda|502323434|18|Eira e Beira, lda|502323434|2200-098 ABRANTES|Y|Y|4
+5|Coro Nossa Senhora Assunção|300455644|26|Coro N. Senhora Assunção|300456544|5300-014 BRAGANÇA|Y|N|4
+8|Luz e Som, lda|365564344|22|Luz e Som Lda.|365564434|8600-531 LAGOS|N|N|4
+cust_a|name_a|nif_a|cust_b|name_b|nif_b|differing_digits
+------|------|-----|------|------|-----|----------------
+5|Coro Nossa Senhora Assunção|300455644|26|Coro N. Senhora Assunção|300456544|2
+8|Luz e Som, lda|365564344|22|Luz e Som Lda.|365564434|2
+invalid_email|missing_email|missing_city|missing_zone|non_pt_zip|seller_not_employee
+-------------|-------------|------------|------------|----------|-------------------
+1|12|3|2|1|4
+number|name|email|clity|zip_code|zone|seller
+------|----|-----|-----|--------|----|------
+2|Vendas a Dinheiro| | | |NULL|0
+5|Coro Nossa Senhora Assunção|coro.sapo.pt|Bairro Além do Rio|5300-014 BRAGANÇA|1|2
+20|MaisRitmo (interno)| | | |NULL|0
+21|La Cartuja Musical| | |28108 Alcobendas - Madrid, España|5|2
+type|segment|n
+----|-------|-
+Cliente Final|Alto|2
+Cliente Final|Baixo|5
+Cliente Final|Médio|4
+Funcionário|Baixo|1
+Interno|Baixo|3
+Revendedor|Alto|6
+Revendedor|Baixo|2
+Revendedor|Médio|3
+min_invoice_date|max_invoice_date|min_created_at|max_created_at|min_updated_at|max_updated_at|min_payment_date|max_payment_date
+----------------|----------------|--------------|--------------|--------------|--------------|----------------|----------------
+2025-01-31|2025-05-01|2025-01-31 16:24:00.000|2025-05-01 15:54:58.000|2025-02-03 16:26:52.000|2025-12-31 16:27:00.000|2025-02-03|2025-12-31
+invoice_date|weekday|is_month_end|n_invoices
+------------|-------|------------|----------
+2025-01-31|Friday|Y|8
+2025-02-28|Friday|Y|9
+2025-03-31|Monday|Y|10
+2025-04-30|Wednesday|Y|9
+2025-05-01|Thursday|N|1
+invoice_stamp_id|invoice_date|create_date|created_at|updated_at|payment_date|issues
+----------------|------------|-----------|----------|----------|------------|------
+ADM06022859336,963953449 |2025-03-31|2025-02-28|2025-02-28 16:28:30.000|2025-10-23 16:28:30.000|2025-10-23|R2 created_before_invoice_date; 
+never_updated|updated_after_insert|updated_on_payment_date
+-------------|--------------------|-----------------------
+1|36|37
+invoice_line_stamp_id|invoice_stamp_id|invoice_date|line_create_date|header_create_date
+---------------------|----------------|------------|----------------|------------------
+prefix|n|min_len|max_len|leading_spaces
+------|-|-------|-------|--------------
+ADM|36|24|24|0
+cq0|1|23|23|0
+currency|n
+--------|-
+EURO|37
+invoice_stamp_id|products_total|sum_lines|shipping_cost|total_for_vat|vat_value|sum_vat|final_total|n_lines|issues
+----------------|--------------|---------|-------------|-------------|---------|-------|-----------|-------|------
+ADM06013159092,572514309 |145.000000|140.000000|3.625000|148.625000|32.200000|32.200000|180.825000|1|PRODUCTS_TOTAL<>SUM(LINES); 
+ADM06022859337,463265852 |234.000000|239.000000|5.850000|239.850000|54.970000|54.970000|294.820000|3|PRODUCTS_TOTAL<>SUM(LINES); 
+ADM06022868165,094314602 |1008.000000|1008.000000|27.700000|1033.200000|231.840000|231.840000|1265.040000|2|TOTAL_FOR_VAT_MISMATCH; 
+ADM06043059438,135478354 |851.000000|851.000000|26.275000|872.275000|195.730000|195.730000|1068.005000|2|TOTAL_FOR_VAT_MISMATCH; 
+shipping_ratio|n
+--------------|-
+.025000|35
+.027480|1
+.030875|1
+invoice_line_stamp_id|invoice_stamp_id|product|quantity|unit_price|line_total|line_vat|qty_x_price|issues
+---------------------|----------------|-------|--------|----------|----------|--------|-----------|------
+ADM06013159092,6190000-3 |ADM06013159092,572514309 |ECPOCKI           |1.0000|-140.000000|140.000000|32.200000|-140.0000000000|NON_POSITIVE_PRICE; 
+ADM06013159093,4010000-3 |ADM06013159093,354502931 |V002              |-2.0000|473.000000|946.000000|217.580000|-946.0000000000|NON_POSITIVE_QTY; 
+ADM06033159385,9470000-3 |ADM06033159385,916951128 |P001              |10.0000|-13.000000|130.000000|29.900000|-130.0000000000|NON_POSITIVE_PRICE; 
+ADM06022868091,8280000-3 |ADM06022868091,750385884 |G001              |-1.0000|662.000000|662.000000|152.260000|-662.0000000000|NON_POSITIVE_QTY; 
+implied_vat_pct|vat_rate|n
+---------------|--------|-
+23.00|23|93
+product|unit_price|current_sell_price|ratio
+-------|----------|------------------|-----
+B004              |76.000000|71000000.000000|934210.5263157894736842105
+R001              |661.000000|661000000.000000|1000000.0000000000000000000
+CASE001           |56.000000|56000000.000000|1000000.0000000000000000000
+G001              |680.000000|680000000.000000|1000000.0000000000000000000
+ACOR02            |1403.000000|1403000000.000000|1000000.0000000000000000000
+ACOR01            |1238.000000|1238000000.000000|1000000.0000000000000000000
+G004              |7.000000|7000000.000000|1000000.0000000000000000000
+ECCDP5300         |102.000000|102000000.000000|1000000.0000000000000000000
+V004              |495.000000|495000000.000000|1000000.0000000000000000000
+V002              |486.000000|486000000.000000|1000000.0000000000000000000
+ECGMINI XS 100    |102.000000|102000000.000000|1000000.0000000000000000000
+F002              |27.000000|27000000.000000|1000000.0000000000000000000
+C001              |188.000000|188000000.000000|1000000.0000000000000000000
+V002              |486.000000|486000000.000000|1000000.0000000000000000000
+V001              |522.000000|522000000.000000|1000000.0000000000000000000
+G002              |1175.000000|1175000000.000000|1000000.0000000000000000000
+M001              |16.000000|16000000.000000|1000000.0000000000000000000
+B001              |155.000000|155000000.000000|1000000.0000000000000000000
+C001              |188.000000|188000000.000000|1000000.0000000000000000000
+C006              |46.000000|46000000.000000|1000000.0000000000000000000
+reference|designation|family|category|supplyer|vat_rate|current_sell_price
+---------|-----------|------|--------|--------|--------|------------------
+Z001              |NULL|NULL|NULL|NULL|NULL|NULL
+CORSR             |NULL|NULL|NULL|NULL|NULL|NULL
+ECLUNNATIC 5000   |Reprodutor de mp3 lunnatic 5000 wireless                    |Rádios|8|NULL|23|961000000.000000
+ECCDP5100         |Leitor de cd cdp 5100                                       |Rádios|7|NULL|23|94000000.000000
+ECRRCD 2420       |Rádio gravador c/ cd rrcd 2420                              |Rádios|7|NULL|23|145000000.000000
+ECRRCD3400        |Rádio gravador c/ cd rrcd 3400 mp3                          |Rádios|7|NULL|23|162000000.000000
+ECRCD6800         |Rádio leitor cd beezz rcd 6800                              |Rádios|7|NULL|23|723000000.000000
+ECRCD 1420        |Rádio leitor cd rcd 1420 mp3                                |Rádios|8|NULL|23|553000000.000000
+ECPOCKIV5         |Leitor de mp3 pocki v5                                      |Rádios|8|NULL|23|163000000.000000
+ECLR03            |Pilha alcalina lr03                                         |Pilhas|11|NULL|23|1000000.000000
+EC3LR12           |Pilha alcalina 3lr12                                        |Pilhas|11|NULL|23|1000000.000000
+ECHR03            |Pilha nicad+nimh hr03                                       |Pilhas|11|NULL|23|1000000.000000
+min_price|max_price|avg_price
+---------|---------|---------
+50000.000000|1568000000.000000|281213076.923076
+reference|times_sold
+---------|----------
+Z001              |0
+CORSR             |0
+taxpayer_number|n|suppliers
+---------------|-|---------
+502199378|2|8:FaroInstrumentos | 14:FaroInstrumentos II
+number|name|taxpayer_number|zone|type
+------|----|---------------|----|----
+3|Compras a Dinheiro|111111111|NULL| 
+10|Gabbanelli Instrumentos|758963251|2|Material
+13|MaisRitmo (interno)||NULL|
+customer|name|type|n_invoices
+--------|----|----|----------
+1|Albertino Maciel|Cliente Final|2
+3|Bernardo Santiago|Cliente Final|2
+4|Rancho Folclórico da Beira Baixa|Cliente Final|2
+5|Coro Nossa Senhora Assunção|Cliente Final|3
+6|Loja de Instrumentos, lda|Revendedor|3
+7|Sons e Ritmos|Revendedor|2
+8|Luz e Som, lda|Revendedor|1
+10|Eira e Beira, lda|Revendedor|1
+11|La Musical Fashion|Cliente Final|1
+12|Marisa Filipa Neves Lousa|Funcionário|1
+13|Fernando Martins|Cliente Final|1
+14|Gosto pela Música|Revendedor|2
+15|Ritmos Quentes, lda|Revendedor|3
+16|Orquestra de Vila Real|Cliente Final|3
+17|Hora a Hora, lda|Revendedor|2
+18|Eira e Beira, lda|Revendedor|1
+21|La Cartuja Musical|Cliente Final|2
+22|Luz e Som Lda.|Revendedor|1
+23|Supermercados Gota Doce, S.A.|Revendedor|2
+26|Coro N. Senhora Assunção|Cliente Final|2
+employee|name|group|n_invoices
+--------|----|-----|----------
+1|Jorge Junqueira|Administrativo|6
+2|Francisco Miguel Gamito|Administrador|3
+3|Sara Sofia Ramos|Vendedor|8
+4|Nuno Gama Pinto|Vendedor|5
+5|Carminda Sofia Costa das Neves|Administrador|8
+6|Elvira Cristina P. Andrade|Administrativo|7
