@@ -114,6 +114,101 @@ Power BI analyses. The Staging Area and the Data Mart are on the **same server**
    inserted and changed lines updated (matched on `InvoiceLineID`). The watermarks only move forward if the run succeeds.
 ---
 
+## 3. EUR Multi-Currency Standardisation
+
+Requirement: the company will expand to other EU countries and to the UK, so
+the Data Mart uses the **euro as the reporting currency** while still allowing
+analysis by original currency.
+
+**Design** (the "Multiple Currencies" technique from the Dimensional Data
+Modeling slides, also used in the resolution of modelling exercise 4):
+
+1. **Normalise the currency code.** Source values are free text (`'EURO'`). A
+   Lookup against `Currency_Lookup` maps them to ISO-4217 codes
+   (`EURO → EUR`; later `LIBRA`/`GBP → GBP`, etc.). A currency with no match
+   cannot be corrected automatically → `stg_InvoicesDQP` (`I06: unknown currency`).
+2. **Currency dimension** `DimCurrency(CurrencyKey, Code, Name, Symbol)`: the
+   fact references the currency in which the invoice was issued.
+3. **Pairs of facts.** Each money fact of `FactSales` is stored twice: in the
+   **original (local) currency** and in the **standard currency (EUR)**:
+   `UnitPrice…`, `Amount…` (excl. VAT), `VATAmount…`, `TotalAmount…` (incl. VAT),
+   `ShippingCost…` (allocated), each with the suffix `OriginalCurrency` or
+   `StandardCurrency`. EUR facts can be added across all invoices; original facts
+   can be analysed by filtering on one currency.
+4. **Currency conversion fact table** `FactCurrencyRate(DateKey, SourceCurrencyKey,
+   DestinationCurrencyKey, SourceDestinationExchangeRate, DestinationSourceExchangeRate)`
+   keeps the daily rates in **both directions**, because the two directions are not
+   always symmetric. This lets analyses be shown in any currency the user selects,
+   not only EUR. Rates are loaded from a daily rates file (e.g. ECB reference rates)
+   into `stg_CurrencyRate`; EUR → EUR has rate 1 for every date.
+5. **Conversion at load time**: the rate used is the one for the invoice date
+   (or the latest earlier date with a rate):
+
+   ```sql
+   SELECT TOP (1) r.SourceDestinationExchangeRate
+   FROM FactCurrencyRate r
+   JOIN DimDate d ON d.DateKey = r.DateKey
+   WHERE r.SourceCurrencyKey = @InvoiceCurrencyKey
+     AND r.DestinationCurrencyKey = @EURKey
+     AND d.FullDate <= @InvoiceDate
+   ORDER BY d.FullDate DESC;
+   -- <Fact>StandardCurrency = <Fact>OriginalCurrency × rate
+   ```
+6. The rate is fixed at load time (the historical rate of the invoice date). If a
+   rate is corrected later, the invoice's `UpdatedAt` does not change, so the affected
+   period has to be reloaded manually. This is a documented limitation.
+
+With the current data all invoices are EUR (rate = 1), so both values of every pair
+are equal. The mechanism is in place for the expansion to the UK.
+
+---
+
+## 4. SSIS Project Parameterisation Strategy (`Project.params`)
+
+Requirement: **no absolute paths or server/database names inside components**.
+The first four parameters are the ones defined in lab exercise 2 (same names).
+The two `Source…` parameters are added because the project brief also requires
+the operational database server and name to be configurable.
+
+| Parameter | Type | Default (dev) | Used by |
+|---|---|---|---|
+| `ServerName` | String | `localhost` | Staging Area & Data Mart connections (same server) |
+| `StagingAreaDBName` | String | `MoreRhythm_StagingArea` | `CM_StagingArea`; "Create Staging Area Database" task (`@DBName`) |
+| `DataMartDBName` | String | `MoreRhythm_DataMart` | `CM_DataMart`; "Create Data Mart Database" task (`@DBName`) |
+| `PackagePath` | String | project folder (where the solution is) | Foreach loops over `SQL Scripts\Staging Area`, `SQL Scripts\Data Mart`, CSV files in `Files` |
+| `SourceServerName` | String | `localhost` | `CM_MoreRhythm` connection |
+| `SourceDBName` | String | `MoreRhythm` | `CM_MoreRhythm` connection |
+
+**How it is applied** (following lab tutorials 1 and 2)
+
+* **Creating the databases**: an Execute SQL Task on an **ADO.NET** connection to
+  `master` runs a dynamic `IF DB_ID(@DBName) IS NULL EXEC('CREATE DATABASE ' + @DBName)`,
+  with `@DBName` mapped to `$Project::StagingAreaDBName` (or `DataMartDBName`).
+* **Creating the tables**: a Foreach File Enumerator iterates
+  `@[$Project::PackagePath] + "SQL Scripts\\Staging Area"` (`*.sql`), and an
+  Execute SQL Task runs each script (`CreateStageTable<Name>.sql`; Data Mart:
+  `CreateDim<Name>.sql`, `CreateFact<Name>.sql`). Every script checks that its
+  table does not already exist first.
+* **Temporal dimensions** are loaded once, only if empty, from
+  `@[$Project::PackagePath] + "Files\\DimDate.csv"` (generated with an Analysis
+  Services project, lab 3) and `"Files\\DimTime.csv"` (generated in Excel, lab 2).
+* The **project-level OLE DB connection managers** have their
+  `ConnectionString` set by a property **expression**, e.g.
+
+  ```
+  "Data Source=" + @[$Project::ServerName] + ";Initial Catalog=" + @[$Project::StagingAreaDBName]
+  + ";Provider=MSOLEDBSQL.1;Integrated Security=SSPI;Auto Translate=False;"
+  ```
+* No component contains a literal path. Every file or folder is built as `@[$Project::PackagePath]` plus a
+  path relative to the project (`SQL Scripts\…`, `Files\…`).
+* All the ETL is in one package (`Data Mart ETL Package`) organised in sequence containers, as in the labs,
+  so no package calls another package by path.
+* On another machine (the other team member's or the teacher's), only the values in `Project.params` change.
+  After deploying to the SSIS catalog (SSISDB), the parameters can be mapped to an **SSIS Environment**
+  (DEV/TEST/PROD) without touching the package, as in the "Deploying Packages" tutorial.
+
+---
+
 ## 5. Staging Area Structures
 
 Created by `02_Create_Staging_Tables.sql` in database `MoreRhythm_StagingArea`.
@@ -550,7 +645,7 @@ Notes
   680/2058 × 51.45 = 17.00; 56/2058 × 51.45 = 1.40; 1322/2058 × 51.45 = 33.05; total 51.45.
 * Validation on the full sample (37 invoices, 93 lines): Σ allocated = 990.395 = Σ invoice shipping, and the line shares of every invoice add up exactly to its shipping cost (0 mismatches).
 
-SQL implementation (used in `Pkg_02_Transform`):
+SQL implementation (Transform & Cleanse step of the `Data Mart ETL Package`, Execute SQL Task on the Staging Area):
 
 ```sql
 WITH l AS (
