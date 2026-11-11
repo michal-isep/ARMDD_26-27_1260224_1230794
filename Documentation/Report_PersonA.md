@@ -114,6 +114,55 @@ Power BI analyses. The Staging Area and the Data Mart are on the **same server**
    inserted and changed lines updated (matched on `InvoiceLineID`). The watermarks only move forward if the run succeeds.
 ---
 
+## 3. EUR Multi-Currency Standardisation
+
+Requirement: the company will expand to other EU countries and to the UK, so
+the Data Mart uses the **euro as the reporting currency** while still allowing
+analysis by original currency.
+
+**Design** (the "Multiple Currencies" technique from the Dimensional Data
+Modeling slides, also used in the resolution of modelling exercise 4):
+
+1. **Normalise the currency code.** Source values are free text (`'EURO'`). A
+   Lookup against `Currency_Lookup` maps them to ISO-4217 codes
+   (`EURO → EUR`; later `LIBRA`/`GBP → GBP`, etc.). A currency with no match
+   cannot be corrected automatically → `stg_InvoicesDQP` (`I06: unknown currency`).
+2. **Currency dimension** `DimCurrency(CurrencyKey, Code, Name, Symbol)`: the
+   fact references the currency in which the invoice was issued.
+3. **Pairs of facts.** Each money fact of `FactSales` is stored twice: in the
+   **original (local) currency** and in the **standard currency (EUR)**:
+   `UnitPrice…`, `Amount…` (excl. VAT), `VATAmount…`, `TotalAmount…` (incl. VAT),
+   `ShippingCost…` (allocated), each with the suffix `OriginalCurrency` or
+   `StandardCurrency`. EUR facts can be added across all invoices; original facts
+   can be analysed by filtering on one currency.
+4. **Currency conversion fact table** `FactCurrencyRate(DateKey, SourceCurrencyKey,
+   DestinationCurrencyKey, SourceDestinationExchangeRate, DestinationSourceExchangeRate)`
+   keeps the daily rates in **both directions**, because the two directions are not
+   always symmetric. This lets analyses be shown in any currency the user selects,
+   not only EUR. Rates are loaded from a daily rates file (e.g. ECB reference rates)
+   into `stg_CurrencyRate`; EUR → EUR has rate 1 for every date.
+5. **Conversion at load time**: the rate used is the one for the invoice date
+   (or the latest earlier date with a rate):
+
+   ```sql
+   SELECT TOP (1) r.SourceDestinationExchangeRate
+   FROM FactCurrencyRate r
+   JOIN DimDate d ON d.DateKey = r.DateKey
+   WHERE r.SourceCurrencyKey = @InvoiceCurrencyKey
+     AND r.DestinationCurrencyKey = @EURKey
+     AND d.FullDate <= @InvoiceDate
+   ORDER BY d.FullDate DESC;
+   -- <Fact>StandardCurrency = <Fact>OriginalCurrency × rate
+   ```
+6. The rate is fixed at load time (the historical rate of the invoice date). If a
+   rate is corrected later, the invoice's `UpdatedAt` does not change, so the affected
+   period has to be reloaded manually. This is a documented limitation.
+
+With the current data all invoices are EUR (rate = 1), so both values of every pair
+are equal. The mechanism is in place for the expansion to the UK.
+
+---
+
 ## 5. Staging Area Structures
 
 Created by `02_Create_Staging_Tables.sql` in database `MoreRhythm_StagingArea`.
