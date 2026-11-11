@@ -146,3 +146,74 @@ WHERE (LTRIM(RTRIM(email)) <> '' AND email NOT LIKE '%_@_%._%')
 SELECT type, segment, COUNT(*) AS n FROM dbo.customers GROUP BY type, segment ORDER BY type, segment;
 GO
 
+/* =====================================================================
+   2. INVOICES - TIMESTAMP PROFILING
+   ===================================================================== */
+
+/* 2.1 Ranges of all date/time columns */
+SELECT MIN(invoice_date) AS min_invoice_date, MAX(invoice_date) AS max_invoice_date,
+       MIN(CAST(create_date AS datetime) + CAST(create_time AS datetime))           AS min_created_at,
+       MAX(CAST(create_date AS datetime) + CAST(create_time AS datetime))           AS max_created_at,
+       MIN(CAST(last_update_date AS datetime) + CAST(last_update_time AS datetime)) AS min_updated_at,
+       MAX(CAST(last_update_date AS datetime) + CAST(last_update_time AS datetime)) AS max_updated_at,
+       MIN(payment_date) AS min_payment_date, MAX(payment_date) AS max_payment_date
+FROM dbo.invoices;
+GO
+
+/* 2.2 Distribution of invoices per day / weekday (invoice_date) */
+SELECT invoice_date, DATENAME(weekday, invoice_date) AS weekday,
+       CASE WHEN invoice_date = EOMONTH(invoice_date) THEN 'Y' ELSE 'N' END AS is_month_end,
+       COUNT(*) AS n_invoices
+FROM dbo.invoices
+GROUP BY invoice_date
+ORDER BY invoice_date;
+GO
+
+/* 2.3 Timestamp consistency rules
+       R1 created_at must be <= updated_at
+       R2 create_date should not be before invoice_date (record created before the sale)
+       R3 payment_date must be >= invoice_date
+       R4 invoice dates in the future / before company start                       */
+WITH t AS (
+    SELECT invoice_stamp_id, invoice_date, payment_date,
+           CAST(create_date AS datetime) + CAST(create_time AS datetime)           AS created_at,
+           CAST(last_update_date AS datetime) + CAST(last_update_time AS datetime) AS updated_at,
+           create_date
+    FROM dbo.invoices
+)
+SELECT invoice_stamp_id, invoice_date, create_date, created_at, updated_at, payment_date,
+       CASE WHEN created_at > updated_at       THEN 'R1 created_after_updated; ' ELSE '' END +
+       CASE WHEN create_date < invoice_date    THEN 'R2 created_before_invoice_date; ' ELSE '' END +
+       CASE WHEN create_date > invoice_date    THEN 'R2b created_after_invoice_date; ' ELSE '' END +
+       CASE WHEN payment_date < invoice_date   THEN 'R3 paid_before_invoice; ' ELSE '' END +
+       CASE WHEN invoice_date > CAST(GETDATE() AS date) THEN 'R4 future_invoice; ' ELSE '' END AS issues
+FROM t
+WHERE created_at > updated_at OR create_date <> invoice_date
+   OR payment_date < invoice_date OR invoice_date > CAST(GETDATE() AS date);
+GO
+
+/* 2.4 Is the last_update timestamp actually used? (incremental-load relevance) */
+SELECT
+    SUM(CASE WHEN create_date = last_update_date AND create_time = last_update_time THEN 1 ELSE 0 END) AS never_updated,
+    SUM(CASE WHEN NOT (create_date = last_update_date AND create_time = last_update_time) THEN 1 ELSE 0 END) AS updated_after_insert,
+    SUM(CASE WHEN last_update_date = payment_date THEN 1 ELSE 0 END) AS updated_on_payment_date
+FROM dbo.invoices;
+GO
+
+/* 2.5 Invoice lines timestamps vs header */
+SELECT l.invoice_line_stamp_id, l.invoice_stamp_id, i.invoice_date,
+       l.create_date AS line_create_date, i.create_date AS header_create_date
+FROM dbo.invoices_lines l
+JOIN dbo.invoices i ON i.invoice_stamp_id = l.invoice_stamp_id
+WHERE l.create_date < i.create_date
+   OR CAST(l.create_date AS datetime) + CAST(l.create_time AS datetime)
+    > CAST(l.last_update_date AS datetime) + CAST(l.last_update_time AS datetime);
+GO
+
+/* 2.6 Invoice key format (stamp ids are char(25) with trailing spaces) */
+SELECT LEFT(invoice_stamp_id, 3) AS prefix, COUNT(*) AS n,
+       MIN(LEN(invoice_stamp_id)) AS min_len, MAX(LEN(invoice_stamp_id)) AS max_len,
+       SUM(CASE WHEN invoice_stamp_id <> LTRIM(invoice_stamp_id) THEN 1 ELSE 0 END) AS leading_spaces
+FROM dbo.invoices GROUP BY LEFT(invoice_stamp_id, 3);
+GO
+
