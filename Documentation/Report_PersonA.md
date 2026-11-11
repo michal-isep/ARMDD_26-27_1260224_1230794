@@ -421,3 +421,80 @@ As in lab 4 (`Gender` F → Female), every code is replaced by a value whose mea
 | T08 | dates / times | `Weekend`, `LastDayOfMonth`, `LunchTime`, `DinnerTime` | `'Yes'` / `'No'` instead of 1/0 |
 | T09 | `create_date` + `create_time`, `last_update_date` + `last_update_time` | `CreatedAt`, `UpdatedAt` (staging) | combined into one `DATETIME2` |
 | T10 | `zip_code` (`2600-011 VILA FRANCA DE XIRA`) | `PostalCode` + locality | split on the first space after the `NNNN-NNN` code |
+
+---
+
+## 6. Customer De-duplication Algorithm
+
+**Input:** `stg_Customers` (new/changed customers) and the customers already in
+`DimCustomer`. **Output:** `CustomerDuplicate_Lookup` (every source id → survivor id) and
+one surviving, merged record per real customer.
+
+1. **Standardise** every record:
+   * `NameNorm` = UPPER, accent-insensitive (`COLLATE Latin1_General_CI_AI`),
+     punctuation removed, legal suffixes removed (`LDA`, `S.A.`, `UNIPESSOAL`),
+     abbreviations expanded (`N.` → `NOSSA`, `SRA` → `SENHORA`, `R.` → `RUA`, `AV.` → `AVENIDA`), multiple spaces collapsed;
+   * `AddressNorm` the same way; `Phone`/`Mobile` → digits only;
+   * `ZipCode` = first 8 characters (`NNNN-NNN`);
+   * `TaxNumber` = NULL if blank or only zeros (rule C02); `IsTaxNumberValid` = modulo-11 check.
+2. **Exclude non-matchable records** from the comparison: customers of type
+   `Interno` and generic customers ("Vendas a Dinheiro") – each is its own survivor.
+3. **Blocking** (to avoid comparing all n² pairs on large volumes): only compare
+   records that share **NIF**, or **ZipCode**, or **Phone**.
+4. **Matching rules** for each candidate pair (A, B):
+   * **M1 – exact identifier:** `A.TaxNumber = B.TaxNumber` (not NULL) → duplicate, score 1.0.
+   * **M2 – fuzzy:** same `ZipCode` **and** name similarity ≥ 0.80
+     (SSIS *Fuzzy Grouping* on `NameNorm`, `AddressNorm`) **and** at least one
+     corroborating evidence: NIF differs in ≤ 2 digits, **or** same phone, **or**
+     address similarity ≥ 0.80 → duplicate, score = similarity.
+   * Otherwise → distinct customers.
+5. **Clustering:** take the transitive closure of the matched pairs (if A≈B and
+   B≈C then {A,B,C} is one group).
+6. **Survivor selection** inside each group, in order:
+   1. record already present in `DimCustomer` (keeps the surrogate key stable);
+   2. record with a valid NIF check digit;
+   3. most complete record (largest number of non-empty attributes);
+   4. earliest `CreatedAt` (the original registration);
+   5. lowest `CustomerID`.
+7. **Survivorship per attribute:** survivor values win; empty/invalid survivor
+   attributes are filled from the other members with the most recent `UpdatedAt`
+   (e.g. customer 5's invalid e-mail is replaced by customer 26's `coro@sapo.pt`).
+8. **Persist** `CustomerDuplicate_Lookup(SourceCustomerID, SurvivorCustomerID, MatchRule, MatchScore)`;
+   only survivors are loaded into `DimCustomer`.
+9. **Re-key facts:** `stg_Invoices.SurvivorCustomerID` is set through the map, so
+   sales of all duplicates are attributed to the same `CustomerKey`.
+10. **Incremental runs:** new customers are matched against `DimCustomer` as
+    well; an existing map entry is never re-pointed automatically (manual review).
+
+**Result on the provided data** (validated in SQL): 3 groups, 0 false positives –
+{10, 18} by M1, {5, 26} and {8, 22} by M2. 26 source customers → 23 customers in the Data Mart.
+
+**Survivor of each group** (rules of step 6 applied to the data; none of them is in `DimCustomer` yet, and none has a valid check digit except group 1, where both NIFs are equal and valid):
+
+| Group | Members | Rule | Completeness (filled contact/address fields) | Survivor | Reason |
+|---|---|---|---|---|---|
+| 1 | 10, 18 "Eira e Beira, lda" | M1 | 6 / 6 | **10** | tie on completeness → created first (2025-03-31 vs 2025-05-31) |
+| 2 | 5 "Coro Nossa Senhora Assunção", 26 "Coro N. Senhora Assunção" | M2 | 5 / 6 | **26** | more complete (valid e-mail, mobile); customer 5's contact name is kept by attribute survivorship |
+| 3 | 8 "Luz e Som, lda", 22 "Luz e Som Lda." | M2 | 5 / 5 | **8** | tie on completeness → created first (2025-04-30 vs 2025-06-30); phone taken from 22 |
+
+**Validation query** (finds the candidate pairs with rules M1 and M2; result: exactly the 3 pairs above):
+
+```sql
+WITH c AS (
+  SELECT number, zip_code,
+         LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+             UPPER(name) COLLATE Latin1_General_CI_AI, ',', ' '), '.', ' '), ' LDA', ' '),
+             ' S A', ' '), ' N ', ' NOSSA '), '  ', ' '))) AS NameNorm,
+         taxpayer_number AS nif,
+         CASE WHEN taxpayer_number LIKE '%[^0]%' AND LEN(taxpayer_number) = 9 THEN 1 ELSE 0 END AS real_nif
+  FROM MoreRhythm.dbo.customers
+)
+SELECT a.number AS customer_a, b.number AS customer_b,
+       CASE WHEN a.real_nif = 1 AND a.nif = b.nif THEN 'M1' ELSE 'M2' END AS match_rule
+FROM c a JOIN c b ON a.number < b.number
+WHERE (a.real_nif = 1 AND a.nif = b.nif)
+   OR (a.zip_code = b.zip_code AND a.zip_code <> '' AND DIFFERENCE(a.NameNorm, b.NameNorm) = 4);
+```
+
+In SSIS, the same matching is done with the **Fuzzy Grouping** transformation on `NameNorm`, `AddressNorm`
+and `ZipCode` (exact match on `ZipCode`), with a similarity threshold of 0.80.
