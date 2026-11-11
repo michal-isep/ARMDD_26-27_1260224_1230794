@@ -237,3 +237,84 @@ CREATE TABLE dbo.stg_Employees (
 );
 GO
 
+/* =====================================================================
+   DATA QUALITY PROBLEM (DQP) TABLES  - persistent, rows are appended
+   Convention (lab 4, CardDQP): same columns as the staging table, values
+   kept as NVARCHAR, plus the DQP column with the problem description
+   ("<code>: <message>", codes listed in the report) and audit columns.
+   In SSIS: Conditional Split / Lookup error output -> Derived Column
+   "Add <problem> DQP" -> Union All -> OLE DB Destination stg_<Table>DQP.
+   ===================================================================== */
+CREATE TABLE dbo.stg_CustomersDQP (
+    DQPID               INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_stg_CustomersDQP PRIMARY KEY,
+    number              NVARCHAR(20)   NULL,
+    name                NVARCHAR(100)  NULL,
+    taxpayer_number     NVARCHAR(40)   NULL,
+    phone               NVARCHAR(60)   NULL,
+    mobile              NVARCHAR(45)   NULL,
+    contact             NVARCHAR(60)   NULL,
+    email               NVARCHAR(100)  NULL,
+    address             NVARCHAR(100)  NULL,
+    clity               NVARCHAR(60)   NULL,
+    zip_code            NVARCHAR(60)   NULL,
+    zone                NVARCHAR(20)   NULL,
+    type                NVARCHAR(40)   NULL,
+    seller              NVARCHAR(20)   NULL,
+    segment             NVARCHAR(40)   NULL,
+    create_datetime     NVARCHAR(40)   NULL,
+    last_update_datetime NVARCHAR(40)  NULL,
+    DQP                 NVARCHAR(200)  NOT NULL,     -- e.g. 'C01: customer name is missing'
+    DQPDate             DATETIME       NOT NULL CONSTRAINT DF_stg_CustomersDQP_Date DEFAULT GETDATE(),
+    RunID               INT            NULL
+);
+CREATE TABLE dbo.stg_InvoicesDQP (
+    DQPID               INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_stg_InvoicesDQP PRIMARY KEY,
+    invoice_stamp_id    NVARCHAR(40)   NULL,
+    invoice_date        NVARCHAR(40)   NULL,
+    customer            NVARCHAR(20)   NULL,
+    employee            NVARCHAR(20)   NULL,
+    payment_date        NVARCHAR(40)   NULL,
+    currency            NVARCHAR(20)   NULL,
+    products_total      NVARCHAR(40)   NULL,
+    shipping_cost       NVARCHAR(40)   NULL,
+    total_for_vat       NVARCHAR(40)   NULL,
+    vat_value           NVARCHAR(40)   NULL,
+    final_total         NVARCHAR(40)   NULL,
+    create_datetime     NVARCHAR(40)   NULL,
+    last_update_datetime NVARCHAR(40)  NULL,
+    DQP                 NVARCHAR(200)  NOT NULL,     -- e.g. 'I03: customer not found'
+    DQPDate             DATETIME       NOT NULL CONSTRAINT DF_stg_InvoicesDQP_Date DEFAULT GETDATE(),
+    RunID               INT            NULL
+);
+CREATE TABLE dbo.stg_InvoiceLinesDQP (
+    DQPID               INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_stg_InvoiceLinesDQP PRIMARY KEY,
+    invoice_line_stamp_id NVARCHAR(40) NULL,
+    invoice_stamp_id    NVARCHAR(40)   NULL,
+    product             NVARCHAR(40)   NULL,
+    quantity            NVARCHAR(40)   NULL,
+    unit_price          NVARCHAR(40)   NULL,
+    line_total          NVARCHAR(40)   NULL,
+    line_vat            NVARCHAR(40)   NULL,
+    create_datetime     NVARCHAR(40)   NULL,
+    last_update_datetime NVARCHAR(40)  NULL,
+    DQP                 NVARCHAR(200)  NOT NULL,     -- e.g. 'L02: product not found'
+    DQPDate             DATETIME       NOT NULL CONSTRAINT DF_stg_InvoiceLinesDQP_Date DEFAULT GETDATE(),
+    RunID               INT            NULL
+);
+CREATE TABLE dbo.stg_ProductsDQP (
+    DQPID               INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_stg_ProductsDQP PRIMARY KEY,
+    reference           NVARCHAR(40)   NULL,
+    designation         NVARCHAR(100)  NULL,
+    family              NVARCHAR(40)   NULL,
+    category            NVARCHAR(20)   NULL,
+    supplyer            NVARCHAR(20)   NULL,
+    current_sell_price  NVARCHAR(40)   NULL,
+    vat_rate            NVARCHAR(20)   NULL,
+    DQP                 NVARCHAR(200)  NOT NULL,     -- e.g. 'P01: product without designation/family/category'
+    DQPDate             DATETIME       NOT NULL CONSTRAINT DF_stg_ProductsDQP_Date DEFAULT GETDATE(),
+    RunID               INT            NULL
+);
+GO
+PRINT 'Staging Area created: ' + DB_NAME();
+SELECT name AS table_name FROM sys.tables ORDER BY name;
+GO
