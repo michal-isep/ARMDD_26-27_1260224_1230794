@@ -101,3 +101,91 @@ CREATE TABLE dbo.CustomerDuplicate_Lookup (
     RunID               INT           NULL
 );
 GO
+
+/* =====================================================================
+   STAGING TABLES (transient: truncated at the start of each run)
+   ===================================================================== */
+
+/* ---- Customers -------------------------------------------------------- */
+CREATE TABLE dbo.stg_Customers (
+    CustomerID          NUMERIC(10,0) NOT NULL,     -- customers.number
+    SurvivorCustomerID  NUMERIC(10,0) NULL,         -- filled by de-duplication
+    CustomerName        NVARCHAR(55)  NOT NULL,     -- trimmed, proper case
+    CustomerNameNorm    NVARCHAR(55)  NULL,         -- upper, no accents/punctuation/legal suffix (matching key)
+    TaxNumber           VARCHAR(20)   NULL,         -- trimmed; NULL when placeholder (blank/zeros)
+    IsTaxNumberValid    BIT           NULL,         -- PT NIF modulo-11 check digit
+    Phone               VARCHAR(20)   NULL,         -- digits only
+    Mobile              VARCHAR(20)   NULL,         -- digits only
+    ContactName         NVARCHAR(30)  NULL,
+    Email               VARCHAR(45)   NULL,         -- NULL when invalid format
+    Address             NVARCHAR(55)  NULL,
+    City                NVARCHAR(43)  NULL,         -- customers.clity
+    ZipCode             VARCHAR(10)   NULL,         -- "NNNN-NNN" (PT) or foreign postal code
+    ZipLocality         NVARCHAR(40)  NULL,         -- text after the zip code
+    Country             NVARCHAR(30)  NULL,         -- derived: Portugal / Espanha (from zone)
+    ZoneCode            NUMERIC(5,0)  NULL,
+    ZoneName            NVARCHAR(50)  NULL,         -- zones.zone (Norte, Centro, Sul, Ilhas, Espanha)
+    CustomerType        NVARCHAR(20)  NOT NULL,     -- Cliente Final, Revendedor, Funcionário, Interno
+    Segment             NVARCHAR(25)  NOT NULL,     -- Alto, Médio, Baixo
+    SellerCode          NUMERIC(4,0)  NULL,
+    DaysToPay           NUMERIC(3,0)  NULL,
+    BBAN                VARCHAR(28)   NULL,
+    CreatedAt           DATETIME2(0)  NOT NULL,     -- create_date + create_time
+    UpdatedAt           DATETIME2(0)  NOT NULL,     -- last_update_date + last_update_time
+    RunID               INT           NULL,
+    CONSTRAINT PK_stg_Customers PRIMARY KEY (CustomerID)
+);
+GO
+
+/* ---- Invoices (header) ------------------------------------------------ */
+CREATE TABLE dbo.stg_Invoices (
+    InvoiceID           VARCHAR(25)    NOT NULL,    -- invoices.invoice_stamp_id (trimmed)
+    InvoiceDate         DATE           NOT NULL,
+    CustomerID          NUMERIC(10,0)  NOT NULL,    -- source customer id
+    SurvivorCustomerID  NUMERIC(10,0)  NULL,        -- after de-duplication
+    EmployeeID          NUMERIC(6,0)   NOT NULL,
+    PaymentDate         DATE           NULL,
+    CurrencySource      VARCHAR(11)    NOT NULL,    -- as in source (e.g. 'EURO')
+    CurrencyCode        CHAR(3)        NOT NULL,    -- ISO code (EUR, GBP, ...)
+    ExchangeRateToEUR   DECIMAL(19,10) NOT NULL,
+    ProductsTotal       DECIMAL(19,6)  NOT NULL,    -- original currency (header value)
+    ShippingCost        DECIMAL(19,6)  NOT NULL,    -- original currency (after correction rule S1)
+    TotalForVAT         DECIMAL(19,6)  NOT NULL,
+    VATValue            DECIMAL(19,6)  NOT NULL,
+    FinalTotal          DECIMAL(19,6)  NOT NULL,
+    SumLinesTotal       DECIMAL(19,6)  NULL,        -- SUM(line_total) - used for allocation
+    ShippingCostEUR     DECIMAL(19,6)  NULL,
+    QualityFlags        VARCHAR(200)   NULL,        -- auto-corrected issues (audit trail)
+    CreatedAt           DATETIME2(0)   NOT NULL,
+    UpdatedAt           DATETIME2(0)   NOT NULL,
+    RunID               INT            NULL,
+    CONSTRAINT PK_stg_Invoices PRIMARY KEY (InvoiceID)
+);
+GO
+
+/* ---- Invoice lines (grain of the fact table) --------------------------- */
+CREATE TABLE dbo.stg_InvoiceLines (
+    InvoiceLineID       VARCHAR(25)    NOT NULL,    -- invoices_lines.invoice_line_stamp_id
+    InvoiceID           VARCHAR(25)    NOT NULL,
+    ProductID           VARCHAR(18)    NOT NULL,    -- products.reference (trimmed)
+    Quantity            DECIMAL(14,4)  NOT NULL,    -- ABS() applied (sign errors)
+    UnitPrice           DECIMAL(19,6)  NOT NULL,    -- ABS() applied, original currency
+    LineTotal           DECIMAL(19,6)  NOT NULL,    -- excl. VAT, original currency
+    LineVAT             DECIMAL(19,6)  NOT NULL,
+    VATRate             DECIMAL(5,2)   NULL,        -- LineVAT / LineTotal * 100
+    ShippingAllocated   DECIMAL(19,6)  NULL,        -- share of invoice shipping (see report)
+    -- EUR-standardised measures (amount * ExchangeRateToEUR)
+    UnitPriceEUR        DECIMAL(19,6)  NULL,
+    LineTotalEUR        DECIMAL(19,6)  NULL,
+    LineVATEUR          DECIMAL(19,6)  NULL,
+    LineTotalWithVATEUR DECIMAL(19,6)  NULL,
+    ShippingAllocatedEUR DECIMAL(19,6) NULL,
+    QualityFlags        VARCHAR(200)   NULL,
+    CreatedAt           DATETIME2(0)   NOT NULL,
+    UpdatedAt           DATETIME2(0)   NOT NULL,
+    RunID               INT            NULL,
+    CONSTRAINT PK_stg_InvoiceLines PRIMARY KEY (InvoiceLineID)
+);
+CREATE INDEX IX_stg_InvoiceLines_Invoice ON dbo.stg_InvoiceLines (InvoiceID);
+GO
+
