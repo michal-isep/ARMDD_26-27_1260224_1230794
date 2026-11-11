@@ -189,3 +189,51 @@ CREATE TABLE dbo.stg_InvoiceLines (
 CREATE INDEX IX_stg_InvoiceLines_Invoice ON dbo.stg_InvoiceLines (InvoiceID);
 GO
 
+/* ---- Dimension sources used by the fact lookups ------------------------ */
+CREATE TABLE dbo.stg_Products (
+    ProductID           VARCHAR(18)    NOT NULL CONSTRAINT PK_stg_Products PRIMARY KEY,
+    ProductName         NVARCHAR(60)   NOT NULL,
+    FamilyCode          VARCHAR(18)    NULL,
+    FamilyName          NVARCHAR(60)   NULL,
+    FamilyClassification NVARCHAR(20)  NULL,
+    CategoryCode        INT            NULL,
+    CategoryName        NVARCHAR(35)   NULL,
+    SupplierID          NUMERIC(10,0)  NULL,
+    Classification      NVARCHAR(20)   NULL,
+    CurrentSellPrice    DECIMAL(19,6)  NULL,        -- divided by 1,000,000 (scale error in source)
+    LastCostPrice       DECIMAL(19,6)  NULL,        -- divided by 1,000,000
+    VATRate             DECIMAL(5,2)   NULL,
+    CreatedAt           DATETIME2(0)   NULL,
+    UpdatedAt           DATETIME2(0)   NULL,
+    RunID               INT            NULL
+);
+CREATE TABLE dbo.stg_Suppliers (
+    SupplierID          NUMERIC(10,0)  NOT NULL CONSTRAINT PK_stg_Suppliers PRIMARY KEY,
+    SupplierName        NVARCHAR(55)   NOT NULL,
+    TaxNumber           VARCHAR(20)    NULL,
+    City                NVARCHAR(43)   NULL,
+    ZipCode             VARCHAR(10)    NULL,
+    Country             NVARCHAR(30)   NULL,
+    ZoneCode            NUMERIC(5,0)   NULL,
+    ZoneName            NVARCHAR(50)   NULL,
+    SupplierType        NVARCHAR(20)   NULL,
+    Nationality         NVARCHAR(20)   NULL,
+    CreatedAt           DATETIME2(0)   NULL,
+    UpdatedAt           DATETIME2(0)   NULL,
+    RunID               INT            NULL
+);
+CREATE TABLE dbo.stg_Employees (
+    EmployeeID          NUMERIC(6,0)   NOT NULL CONSTRAINT PK_stg_Employees PRIMARY KEY,
+    EmployeeCode        VARCHAR(20)    NOT NULL,
+    EmployeeName        NVARCHAR(30)   NOT NULL,
+    EmployeeGroup       NVARCHAR(20)   NULL,
+    Department          NVARCHAR(20)   NULL,
+    ManagerID           NUMERIC(6,0)   NULL,
+    ManagerName         NVARCHAR(30)   NULL,
+    Email               VARCHAR(100)   NULL,
+    CreatedAt           DATETIME2(0)   NULL,
+    UpdatedAt           DATETIME2(0)   NULL,
+    RunID               INT            NULL
+);
+GO
+
