@@ -1,0 +1,92 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="arch3tier" name="DW Architecture">
+    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="&lt;b&gt;MoreRhythm – Data Warehouse Architecture (3 tiers)&lt;/b&gt;" style="text;html=1;fontSize=20;align=center;" vertex="1" parent="1">
+          <mxGeometry x="300" y="10" width="800" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Tier 1 -->
+        <mxCell id="t1" value="Tier 1 – Operational System" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="80" width="300" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="os" value="&lt;b&gt;MoreRhythm&lt;/b&gt;&lt;br&gt;SQL Server (OLTP)&lt;br&gt;Param: SourceServerName / SourceDBName" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=15;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="t1">
+          <mxGeometry x="40" y="50" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ostables" value="customers · invoices · invoices_lines&lt;br&gt;products · families · categories&lt;br&gt;suplliers · employees · zones&lt;br&gt;&lt;br&gt;&lt;i&gt;create_date/time, last_update_date/time&lt;br&gt;on every table → incremental extraction&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="t1">
+          <mxGeometry x="20" y="190" width="260" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Tier 2 -->
+        <mxCell id="t2" value="Tier 2 – Staging Area (MoreRhythm_StagingArea)" style="swimlane;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="420" y="80" width="460" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="stg" value="&lt;b&gt;stg_* (transient)&lt;/b&gt;&lt;br&gt;stg_Customers · stg_Invoices · stg_InvoiceLines&lt;br&gt;stg_Products · stg_Suppliers · stg_Employees" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="t2">
+          <mxGeometry x="20" y="45" width="420" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="clean" value="&lt;b&gt;Transform &amp;amp; Cleanse (SSIS)&lt;/b&gt;&lt;br&gt;trim / types · placeholder NIF · ABS() sign fix · price ÷10⁶&lt;br&gt;customer de-duplication · EUR conversion · shipping allocation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="t2">
+          <mxGeometry x="20" y="135" width="420" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="err" value="&lt;b&gt;DQP tables (persistent)&lt;/b&gt;&lt;br&gt;stg_CustomersDQP · stg_InvoicesDQP&lt;br&gt;stg_InvoiceLinesDQP · stg_ProductsDQP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;" vertex="1" parent="t2">
+          <mxGeometry x="20" y="230" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="aux" value="&lt;b&gt;lookups / control&lt;/b&gt;&lt;br&gt;Currency_Lookup · CustomerDuplicate_Lookup&lt;br&gt;stg_CurrencyRate · etl_LoadControl · etl_RunLog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="t2">
+          <mxGeometry x="240" y="230" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="srvnote" value="Param: ServerName / StagingAreaDBName" style="text;html=1;fontSize=11;fontStyle=2;align=center;" vertex="1" parent="t2">
+          <mxGeometry x="20" y="330" width="420" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Tier 3 -->
+        <mxCell id="t3" value="Tier 3 – Data Mart (MoreRhythm_DataMart)" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="80" width="300" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="fact" value="&lt;b&gt;FactSales&lt;/b&gt;&lt;br&gt;grain: invoice line&lt;br&gt;original + standard (EUR) currency" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontStyle=0;" vertex="1" parent="t3">
+          <mxGeometry x="75" y="150" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="dims" value="DimCustomer · DimProduct · DimSupplier&lt;br&gt;DimEmployee · DimCurrency · DimDate · DimTime&lt;br&gt;FactCurrencyRate · (SCD 1 / SCD 2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;" vertex="1" parent="t3">
+          <mxGeometry x="20" y="50" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="dmnote" value="Param: ServerName / DataMartDBName" style="text;html=1;fontSize=11;fontStyle=2;align=center;" vertex="1" parent="t3">
+          <mxGeometry x="20" y="240" width="260" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- BI -->
+        <mxCell id="bi" value="&lt;b&gt;Power BI&lt;/b&gt;&lt;br&gt;20 multidimensional analyses" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="580" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- SSIS bar -->
+        <mxCell id="ssis" value="&lt;b&gt;SSIS project MoreRhythm_ETL – Data Mart ETL Package:&lt;/b&gt; Create DBs → Load Staging Area → Load Temporal Dims → Load Business Dims → Load Facts&lt;br&gt;all servers, database names and paths come from &lt;b&gt;Project.params&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="20" y="580" width="960" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <mxCell id="e1" value="Extract (incremental:&lt;br&gt;UpdatedAt &amp;gt; watermark)" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="t1" target="stg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="html=1;endArrow=block;strokeWidth=2;" edge="1" parent="t2" source="stg" target="clean">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="rejected" style="html=1;endArrow=block;strokeColor=#b85450;fontSize=11;" edge="1" parent="t2" source="clean" target="err">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="html=1;endArrow=block;dashed=1;" edge="1" parent="t2" source="clean" target="aux">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="Load dims (SCD)&lt;br&gt;then facts" style="html=1;endArrow=block;strokeWidth=2;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="t2" target="t3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" style="html=1;endArrow=block;" edge="1" parent="t3" source="dims" target="fact">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" style="html=1;endArrow=block;strokeWidth=2;" edge="1" parent="1" source="t3" target="bi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
