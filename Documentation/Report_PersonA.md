@@ -75,3 +75,40 @@ designed for large volumes (set-based SQL, indexed staging keys, incremental ext
 * Suppliers 8 and 14 share NIF `502199378` ("FaroInstrumentos" / "FaroInstrumentos II", different cities) → same company, two warehouses: kept as two suppliers (documented, not merged).
 
 ---
+
+---
+
+## 2. Data Warehouse Architecture
+
+Three-tier architecture: operational system → Staging Area → Data Mart, consumed by Power BI
+(diagram: `Design_Diagrams/Architecture_3Tier.drawio`).
+
+![3-tier data warehouse architecture](../Design_Diagrams/Architecture_3Tier.png)
+
+**Tier 1 – Operational system (`MoreRhythm`).** The SQL Server database that supports billing,
+purchasing and stock. Every table records `create_date/time` and `last_update_date/time`, which makes
+incremental extraction possible. Server and database name are parameters (`SourceServerName`, `SourceDBName`).
+
+**Tier 2 – Staging Area (`MoreRhythm_StagingArea`).** Intermediate database where the data is extracted,
+cleaned and integrated before it reaches the Data Mart. It holds the transient `stg_*` tables, the persistent
+`stg_*DQP` tables with the records that cannot be corrected automatically, the `_Lookup` tables, and the
+ETL control tables (`etl_LoadControl`, `etl_RunLog`).
+
+**Tier 3 – Data Mart (`MoreRhythm_DataMart`).** Star schema at the invoice-line grain: `FactSales`, `FactCurrencyRate`
+and the dimensions Customer, Product, Supplier, Employee, Currency, Date and Time. It is the source for the
+Power BI analyses. The Staging Area and the Data Mart are on the **same server** (`ServerName`), as the brief requires.
+
+**ETL flow** (SSIS project `MoreRhythm_ETL`, one package `Data Mart ETL Package` organised in sequence containers, as in the labs):
+
+1. **Create databases and tables**: creates the Staging Area and Data Mart databases if they don't exist
+   and runs the `SQL Scripts` for their tables.
+2. **Load Staging Area**: extracts only the rows whose `UpdatedAt` is greater than the watermark in
+   `etl_LoadControl` (plus their parent/child rows) into the `stg_*` tables.
+3. **Transform & cleanse**: type conversion, trimming, placeholder handling, sign correction, price-scale
+   correction, currency conversion, customer de-duplication and shipping allocation. Records that cannot be
+   corrected automatically go to the `stg_*DQP` table with a `DQP` message and leave the flow (Conditional
+   Split / Lookup error output → Derived Column "Add … DQP" → Union All → OLE DB Destination, as in lab 4).
+4. **Load Temporal Dimensions**: `DimDate` and `DimTime`, loaded once from CSV files.
+5. **Load Business Dimensions**: Slowly Changing Dimension component (Type 1 / Type 2 per attribute).
+6. **Load Fact Tables**: `FactCurrencyRate`, then `FactSales` with surrogate-key lookups. New lines are
+   inserted and changed lines updated (matched on `InvoiceLineID`). The watermarks only move forward if the run succeeds.
