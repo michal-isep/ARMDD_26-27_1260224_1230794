@@ -498,3 +498,73 @@ WHERE (a.real_nif = 1 AND a.nif = b.nif)
 
 In SSIS, the same matching is done with the **Fuzzy Grouping** transformation on `NameNorm`, `AddressNorm`
 and `ZipCode` (exact match on `ZipCode`), with a similarity threshold of 0.80.
+
+---
+
+## 7. Shipping-Cost Allocation Formula
+
+Shipping is recorded only on the invoice header; the fact grain is the invoice
+line, so the cost is allocated **proportionally to the line value excluding VAT**.
+
+For invoice *i* with lines *j = 1…nᵢ*:
+
+$$
+\text{Ship}_{i}^{*} =
+\begin{cases}
+\text{TotalForVAT}_i - \text{ProductsTotal}_i & \text{if } \text{ShippingCost}_i \neq \text{TotalForVAT}_i - \text{ProductsTotal}_i \ (\text{rule S1})\\
+\text{ShippingCost}_i & \text{otherwise}
+\end{cases}
+$$
+
+$$
+\text{ShippingAllocated}_{ij} = \operatorname{round}_6\!\left(\text{Ship}_{i}^{*} \times \frac{\text{LineTotal}_{ij}}{\sum_{k=1}^{n_i}\text{LineTotal}_{ik}}\right)
+$$
+
+Rounding residual (so the line shares add up exactly to the header):
+
+$$
+\text{ShippingAllocated}_{i,j^{*}} \mathrel{+}= \text{Ship}_{i}^{*} - \sum_{j=1}^{n_i}\text{ShippingAllocated}_{ij},
+\qquad j^{*} = \arg\max_j \text{LineTotal}_{ij}
+$$
+
+$$
+\text{ShippingCostOriginalCurrency}_{ij} = \text{ShippingAllocated}_{ij}, \qquad
+\text{ShippingCostStandardCurrency}_{ij} = \text{ShippingAllocated}_{ij} \times \text{rate}_{i \to EUR}
+$$
+
+**Why proportional and not an equal split.** The slides ("Header & Line Facts
+with Different Granularities") use the lab example to show that the header value
+must not be copied to every line. Copying freight 15 to 3 lines would sum to 45.
+The example splits it equally (5 + 5 + 5). We use the same allocation idea, but
+weight by line value. A 1 322 € guitar line and a 56 € case line on the same
+invoice should not carry the same shipping cost. Both methods keep the total
+exact (Σ lines = header).
+
+Notes
+* `LineTotal` is used **after** the sign correction (L01), so weights are never negative.
+* If `Σ LineTotal = 0` (all lines free of charge) the cost is split by quantity:
+  `Ship* × Quantity_ij / Σ Quantity_ik`.
+* The denominator is the **sum of the lines** (not the header `products_total`,
+  which is wrong in 2 invoices), guaranteeing `Σ_j ShippingAllocated_ij = Ship*_i`.
+* Worked example – invoice `ADM06013159066,541488606`, shipping 51.45, lines 680 + 56 + 1322 = 2058:
+  680/2058 × 51.45 = 17.00; 56/2058 × 51.45 = 1.40; 1322/2058 × 51.45 = 33.05; total 51.45.
+* Validation on the full sample (37 invoices, 93 lines): Σ allocated = 990.395 = Σ invoice shipping, and the line shares of every invoice add up exactly to its shipping cost (0 mismatches).
+
+SQL implementation (used in `Pkg_02_Transform`):
+
+```sql
+WITH l AS (
+  SELECT l.InvoiceLineID, l.InvoiceID, l.LineTotal, i.ShippingCost,
+         SUM(l.LineTotal) OVER (PARTITION BY l.InvoiceID) AS SumLines,
+         ROW_NUMBER() OVER (PARTITION BY l.InvoiceID ORDER BY l.LineTotal DESC, l.InvoiceLineID) AS rn
+  FROM stg_InvoiceLines l JOIN stg_Invoices i ON i.InvoiceID = l.InvoiceID
+), a AS (
+  SELECT *, ROUND(ShippingCost * LineTotal / NULLIF(SumLines,0), 6) AS Alloc FROM l
+), b AS (
+  SELECT InvoiceLineID,
+         Alloc + CASE WHEN rn = 1 THEN ShippingCost - SUM(Alloc) OVER (PARTITION BY InvoiceID) ELSE 0 END AS AllocFinal
+  FROM a
+)
+UPDATE t SET ShippingAllocated = b.AllocFinal
+FROM stg_InvoiceLines t JOIN b ON b.InvoiceLineID = t.InvoiceLineID;
+```
