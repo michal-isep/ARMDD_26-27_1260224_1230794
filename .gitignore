@@ -1,0 +1,16 @@
+# Visual Studio / SSIS
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.dtproj.user
+
+# SQL Server Management Studio
+*.ssmssln.user
+
+# Office / OS temporary files
+~$*
+Thumbs.db
+desktop.ini
+.DS_Store
