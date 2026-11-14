@@ -1,7 +1,7 @@
 IF NOT EXISTS (SELECT name FROM sys.tables WHERE name = 'FactSales')	
 	CREATE TABLE [dbo].[FactSales](
-		[InvoiceID] [int] NOT NULL,
-		[InvoiceLineID] [int] NOT NULL,
+		[InvoiceID] [char](25) NOT NULL,
+		[InvoiceLineID] [char](25) NOT NULL,
 		[CustomerKey] [int] NOT NULL,
 		[ProductKey] [int] NOT NULL,
 		[EmployeeKey] [int] NOT NULL,
